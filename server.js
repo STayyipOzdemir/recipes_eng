@@ -11,44 +11,44 @@ app.post('/recipe', async (req, res) => {
   let { recipeType, servings, prepTime, difficulty } = req.body;
 
   try {
-    // 1) "kek" kelimesini "tatlı" ile değiştir: (isteğe bağlı)
+    // "kek" kelimesini "tatlı" ile değiştirin
     recipeType = recipeType.replace(/kek/gi, 'tatlı');
 
-    // *** BURADA ÖNEMLİ DEĞİŞİKLİK: System & user prompt'u artık İngilizce tarif döndürüyor. ***
-    // (Sadece JSON dönecek şekilde kurgulanmıştır.)
+    // 1. Tarif Verisini OpenAI API'den Al
     const recipeResponse = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
-        model: "gpt-3.5-turbo", // GPT-4 erişiminiz varsa "gpt-4" kullanabilirsiniz
+        model: "gpt-3.5-turbo", // Eğer GPT-4 erişiminiz varsa "gpt-4" kullanabilirsiniz
         messages: [
           {
             role: "system",
             content:
-              "You are a recipe assistant who only responds in English. You provide correct and detailed recipes from world cuisines. Respond only in valid JSON, no extra text."
+              "Sen bir tarif asistanısın ve sadece Türkçe cevap veriyorsun. Dünya mutfaklarından doğru ve detaylı tarifler sağlıyorsun.",
           },
           {
             role: "user",
-            content: `Please provide a recipe of type "${recipeType}" for ${servings} servings, with a preparation time of "${prepTime}" minutes, and a difficulty level of "${difficulty}". Respond ONLY in the following valid JSON format without any additional text:
+            content: Lütfen "${recipeType}" türünde, ${servings} kişilik, hazırlık süresi "${prepTime}" olan, zorluk seviyesi "${difficulty}" bir tarif öner. Bu tarif, dünya mutfaklarından olabilir. Cevabını sadece aşağıdaki formatta geçerli bir JSON olarak ver ve başka hiçbir şey ekleme:
 
 {
-  "title": "Name of the recipe in English",
-  "description": "Short description in English",
-  "ingredients": ["Ingredient 1", "Ingredient 2", "..."],
-  "steps": ["Step 1", "Step 2", "..."],
+  "title": "Tarifin Adı",
+  "description": "Tarifin kısa bir açıklaması",
+  "ingredients": ["Malzeme 1", "Malzeme 2", "..."],
+  "steps": ["Adım 1", "Adım 2", "..."],
   "nutrition": {
     "calories": "....",
     "protein": "....",
     "fat": "....",
     "carbohydrates": "...."
   }
-}`
-          }
+}
+,
+          },
         ],
-        temperature: 0.7
+        temperature: 0.7,
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY.trim()}`,
+          Authorization: Bearer ${process.env.OPENAI_API_KEY.trim()},
           'Content-Type': 'application/json',
         },
       }
@@ -56,24 +56,48 @@ app.post('/recipe', async (req, res) => {
 
     let recipeContent = recipeResponse.data.choices[0].message.content;
 
-    // JSON formatını RegEx ile yakala
+    // Yanıtın içindeki JSON'u yakala
     const jsonMatch = recipeContent.match(/{[\s\S]*}/);
-    if (!jsonMatch) {
-      throw new Error('Expected JSON format was not found in the response.');
+    if (jsonMatch) {
+      recipeContent = jsonMatch[0];
+    } else {
+      throw new Error('Beklenen formatta JSON bulunamadı.');
     }
-    recipeContent = jsonMatch[0];
 
-    // JSON parse
     const recipeJson = JSON.parse(recipeContent);
 
-    // 2) Tüm tarifi zaten İngilizce aldığımız için ek bir çeviri adımı gerekmez.
-    //    Dolayısıyla Step #2 (Tarif başlığını İngilizceye çevirme) tamamen kaldırıldı.
+    // 2. Tarif Başlığını İngilizce'ye Çevir
+    const translationResponse = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful assistant that translates Turkish to English.",
+          },
+          {
+            role: "user",
+            content: Translate the following recipe title to English, avoiding any disallowed content: "${recipeJson.title}",
+          },
+        ],
+        temperature: 0.7,
+      },
+      {
+        headers: {
+          Authorization: Bearer ${process.env.OPENAI_API_KEY},
+          'Content-Type': 'application/json',
+        },
+      }
+    );
 
-    // 3) Tarifin fotoğrafını oluşturmak (prompt İngilizce)
-    //    Burada recipeJson.title İngilizce olduğundan "cake" -> "dessert" dönüştürme yine isterseniz yapılabilir:
-    let finalTitle = recipeJson.title.replace(/cake/gi, 'dessert');
+    let translatedTitle = translationResponse.data.choices[0].message.content.trim();
 
-    const imagePrompt = `${finalTitle}, a delicious dessert, high-quality food photograph, professional lighting, studio shot`;
+    // "cake" kelimesini "dessert" ile değiştirin
+    translatedTitle = translatedTitle.replace(/cake/gi, 'dessert');
+
+    // 3. Tarifin Fotoğrafını OpenAI Image API ile Oluştur (İngilizce istem kullanarak)
+    const imagePrompt = ${translatedTitle}, a delicious dessert, high-quality food photograph, professional lighting, studio shot;
 
     try {
       const imageResponse = await axios.post(
@@ -85,32 +109,30 @@ app.post('/recipe', async (req, res) => {
         },
         {
           headers: {
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+            Authorization: Bearer ${process.env.OPENAI_API_KEY},
             'Content-Type': 'application/json',
           },
         }
       );
 
       const imageUrl = imageResponse.data.data[0].url;
-      // Tarif verisine imageUrl ekle
+
+      // Tarif verisine imageUrl'i ekle
       recipeJson.imageUrl = imageUrl;
     } catch (imageError) {
-      console.error("Error generating image:", imageError.response ? imageError.response.data : imageError.message);
-      // Görüntü başarısız olsa bile JSON döndürelim
-      recipeJson.imageUrl = null;
+      console.error("Görüntü oluşturma sırasında hata oluştu:", imageError.response ? imageError.response.data : imageError.message);
+      // Görüntü oluşturma başarısız olsa bile, tarif verisini yine de döndürebilirsiniz
+      recipeJson.imageUrl = null; // Veya placeholder bir resim URL'si kullanabilirsiniz
     }
 
-    // Sonuç
     res.json({ recipe: recipeJson });
   } catch (error) {
-    console.error("Error getting recipe:", error.response ? error.response.data : error.message);
-    res
-      .status(500)
-      .send("Error while generating recipe: " + (error.response ? JSON.stringify(error.response.data) : error.message));
+    console.error("Tarif alınırken hata oluştu:", error.response ? error.response.data : error.message);
+    res.status(500).send("Tarif alınırken bir hata oluştu: " + (error.response ? JSON.stringify(error.response.data) : error.message));
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(Sunucu ${PORT} portunda çalışıyor);
 });
