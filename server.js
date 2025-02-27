@@ -21,13 +21,15 @@ app.post('/recipe', async (req, res) => {
         model: "gpt-3.5-turbo", // Eğer GPT-4 erişiminiz varsa "gpt-4" kullanabilirsiniz
         messages: [
           {
+            // İngilizce cevap vermesini istiyorsanız bu system mesajını koruyun:
             role: "system",
             content:
-              "Sen bir tarif asistanısın ve sadece Türkçe cevap veriyorsun. Dünya mutfaklarından doğru ve detaylı tarifler sağlıyorsun.",
+              "You are a recipe assistant and you respond in English only. You provide correct and detailed recipes from world cuisines.",
           },
           {
             role: "user",
-            content: Lütfen "${recipeType}" türünde, ${servings} kişilik, hazırlık süresi "${prepTime}" olan, zorluk seviyesi "${difficulty}" bir tarif öner. Bu tarif, dünya mutfaklarından olabilir. Cevabını sadece aşağıdaki formatta geçerli bir JSON olarak ver ve başka hiçbir şey ekleme:
+            // Burada backtick (``) kullanarak stringi çok satırlı ve değişken gömmeli tanımlıyoruz.
+            content: `Lütfen "${recipeType}" türünde, ${servings} kişilik, hazırlık süresi "${prepTime}" olan, zorluk seviyesi "${difficulty}" bir tarif öner. Bu tarif, dünya mutfaklarından olabilir. Cevabını sadece aşağıdaki formatta geçerli bir JSON olarak ver ve başka hiçbir şey ekleme:
 
 {
   "title": "Tarifin Adı",
@@ -41,14 +43,14 @@ app.post('/recipe', async (req, res) => {
     "carbohydrates": "...."
   }
 }
-,
+`,
           },
         ],
         temperature: 0.7,
       },
       {
         headers: {
-          Authorization: Bearer ${process.env.OPENAI_API_KEY.trim()},
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY.trim()}`,
           'Content-Type': 'application/json',
         },
       }
@@ -66,7 +68,7 @@ app.post('/recipe', async (req, res) => {
 
     const recipeJson = JSON.parse(recipeContent);
 
-    // 2. Tarif Başlığını İngilizce'ye Çevir
+    // 2. Tarif Başlığını İngilizce'ye Çevir (isteğe bağlı, tarif zaten İngilizce dönebiliyor)
     const translationResponse = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
@@ -78,14 +80,14 @@ app.post('/recipe', async (req, res) => {
           },
           {
             role: "user",
-            content: Translate the following recipe title to English, avoiding any disallowed content: "${recipeJson.title}",
+            content: `Translate the following recipe title to English, avoiding any disallowed content: "${recipeJson.title}"`,
           },
         ],
         temperature: 0.7,
       },
       {
         headers: {
-          Authorization: Bearer ${process.env.OPENAI_API_KEY},
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json',
         },
       }
@@ -96,8 +98,8 @@ app.post('/recipe', async (req, res) => {
     // "cake" kelimesini "dessert" ile değiştirin
     translatedTitle = translatedTitle.replace(/cake/gi, 'dessert');
 
-    // 3. Tarifin Fotoğrafını OpenAI Image API ile Oluştur (İngilizce istem kullanarak)
-    const imagePrompt = ${translatedTitle}, a delicious dessert, high-quality food photograph, professional lighting, studio shot;
+    // 3. Tarifin Fotoğrafını OpenAI Image API ile Oluştur
+    const imagePrompt = `${translatedTitle}, a delicious dessert, high-quality food photograph, professional lighting, studio shot`;
 
     try {
       const imageResponse = await axios.post(
@@ -109,7 +111,7 @@ app.post('/recipe', async (req, res) => {
         },
         {
           headers: {
-            Authorization: Bearer ${process.env.OPENAI_API_KEY},
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
             'Content-Type': 'application/json',
           },
         }
@@ -134,5 +136,5 @@ app.post('/recipe', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(Sunucu ${PORT} portunda çalışıyor);
+  console.log(`Sunucu ${PORT} portunda çalışıyor`);
 });
