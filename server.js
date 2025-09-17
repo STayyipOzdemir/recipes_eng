@@ -18,17 +18,15 @@ app.post('/recipe', async (req, res) => {
     const recipeResponse = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
-        model: "gpt-3.5-turbo", // Eğer GPT-4 erişiminiz varsa "gpt-4" kullanabilirsiniz
+        model: "gpt-5-nano",
         messages: [
           {
-            // İngilizce cevap vermesini istiyorsanız bu system mesajını koruyun:
             role: "system",
             content:
-              "You are a recipe assistant and you respond in English only. You provide correct and detailed recipes from world cuisines.",
+              "You are a recipe assistant and you respond in English only. You provide correct and detailed recipes from world cuisines."
           },
           {
             role: "user",
-            // Burada backtick (``) kullanarak stringi çok satırlı ve değişken gömmeli tanımlıyoruz.
             content: `Lütfen "${recipeType}" türünde, ${servings} kişilik, hazırlık süresi "${prepTime}" olan, zorluk seviyesi "${difficulty}" bir tarif öner. Bu tarif, dünya mutfaklarından olabilir. Cevabını sadece aşağıdaki formatta geçerli bir JSON olarak ver ve başka hiçbir şey ekleme:
 
 {
@@ -42,9 +40,8 @@ app.post('/recipe', async (req, res) => {
     "fat": "....",
     "carbohydrates": "...."
   }
-}
-`,
-          },
+}`
+          }
         ],
         temperature: 0.7,
       },
@@ -68,20 +65,20 @@ app.post('/recipe', async (req, res) => {
 
     const recipeJson = JSON.parse(recipeContent);
 
-    // 2. Tarif Başlığını İngilizce'ye Çevir (isteğe bağlı, tarif zaten İngilizce dönebiliyor)
+    // 2. Tarif Başlığını İngilizce'ye Çevir
     const translationResponse = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
-        model: "gpt-3.5-turbo",
+        model: "gpt-5-nano",
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that translates Turkish to English.",
+            content: "You are a helpful assistant that translates Turkish to English."
           },
           {
             role: "user",
-            content: `Translate the following recipe title to English, avoiding any disallowed content: "${recipeJson.title}"`,
-          },
+            content: `Translate the following recipe title to English, avoiding any disallowed content: "${recipeJson.title}"`
+          }
         ],
         temperature: 0.7,
       },
@@ -105,6 +102,7 @@ app.post('/recipe', async (req, res) => {
       const imageResponse = await axios.post(
         'https://api.openai.com/v1/images/generations',
         {
+          model: "dall-e-2",
           prompt: imagePrompt,
           n: 1,
           size: "512x512",
@@ -123,8 +121,7 @@ app.post('/recipe', async (req, res) => {
       recipeJson.imageUrl = imageUrl;
     } catch (imageError) {
       console.error("Görüntü oluşturma sırasında hata oluştu:", imageError.response ? imageError.response.data : imageError.message);
-      // Görüntü oluşturma başarısız olsa bile, tarif verisini yine de döndürebilirsiniz
-      recipeJson.imageUrl = null; // Veya placeholder bir resim URL'si kullanabilirsiniz
+      recipeJson.imageUrl = null; // fallback
     }
 
     res.json({ recipe: recipeJson });
